@@ -1,0 +1,61 @@
+#!/bin/sh
+
+## tous les titres
+#grep -Eo '^#+ [a-zA-Z0-9].*' file.md | sed -Ee 's/^#+ //g'
+## avec niveaux
+#grep -Eo '^#+ [a-zA-Z0-9].*' file.md | sed -E -e 's/#/  /g' | colrm 1 3
+## et mise en forme markdown
+#grep -Eo '^#+ [a-zA-Z0-9].*' file.md | sed -E -e 's/# /# * [/g' -e 's/#/  /g' -e 's/(.)$/\1]/g'
+## ignorer le contenu des blocs de code
+#awk 'BEGIN{p=1} /```/{if(p==0){p=1}else{p=0}}p' file.md
+
+## slugs (sans #h-)
+#grep -Eo '^#+ [a-zA-Z0-9].*' file.md | sed -Ee 's/^#+ //g' | iconv -t ASCII//TRANSLIT | tr ' ' '-' | tr -cd '[:alnum:]-\n' | tr '[:upper:]' '[:lower:]' | tr -s '-'
+## avec #h-
+#grep -Eo '^#+ [a-zA-Z0-9].*' file.md | sed -Ee 's/^#+ //g' | iconv -t ASCII//TRANSLIT | tr ' ' '-' | tr -cd '[:alnum:]-\n' | tr '[:upper:]' '[:lower:]' | tr -s '-' | awk '{print "#h-" $0}'
+
+# afficher entre <!--toc--> et <!--/toc-->
+#awk '/<!--toc-->/,/<!--\/toc-->/' file.md
+# avant <!--toc-->
+#sed -e '/<!--toc-->/q' file.md
+# apres <!--/toc-->
+#awk '/<!--\/toc-->/{f=1}f' file.md
+
+usage() {
+	echo 'usage: mdtoc [-i = insert in file] <file.md>'
+	exit 1
+}
+
+[ $# -lt 1 ] && usage
+
+inplace=0
+
+if [ "$1" = "-i" ]; then
+	mdfile="$2"
+	inplace=1
+else
+	mdfile="$1"
+fi
+
+if [ ! -f "$mdfile" ]; then
+	echo "file '$mdfile' not found"
+	exit 1
+fi
+
+awk 'BEGIN{p=1} /```/{if(p==0){p=1}else{p=0}}p' "$mdfile" | grep -Eo '^#+ [a-zA-Z0-9].*' | sed -E -e 's/# /# * [/g' -e 's/#/  /g' -e 's/(.)$/\1]/g' | colrm 1 3 > /tmp/titles
+awk 'BEGIN{p=1} /```/{if(p==0){p=1}else{p=0}}p' "$mdfile" | grep -Eo '^#+ [a-zA-Z0-9].*' | sed -Ee 's/^#+ //g' | iconv -t ASCII//TRANSLIT | tr ' ' '-' | tr -cd '[:alnum:]-\n' | tr '[:upper:]' '[:lower:]' | tr -s '-' | awk '{print "(#h-" $0 ")"}' > /tmp/anchors
+
+if [ $inplace -eq 1 ]; then
+	if ! grep -q '<!--toc-->' "$mdfile" || ! grep -q '<!--/toc-->' "$mdfile"; then
+		echo 'Missing <!--toc--><!--/toc--> marks'
+		exit 1
+	fi
+	mv "$mdfile" "${mdfile}.orig"
+	sed -e '/<!--toc-->/q' "${mdfile}.orig" > "$mdfile"
+	paste -d '' /tmp/titles /tmp/anchors >> "$mdfile"
+	awk '/<!--\/toc-->/{f=1}f' "${mdfile}.orig" >> "$mdfile"
+else
+	paste -d '' /tmp/titles /tmp/anchors
+fi
+
+rm /tmp/titles /tmp/anchors
